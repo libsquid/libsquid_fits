@@ -1,0 +1,27 @@
+
+This utility depends on having the base libsquid library and
+libsquid_wcs library installed as well as cfitsio (>3.27) and
+wcslib (>4.19).
+
+Currently the build system in use is cmake.  The best way to
+build the system is to make a build directory in the location
+of your choice, cd to it, and then run:
+> cmake [-DCMAKE_INSTALL_PREFIX:PATH=/install/path] /path/to/libsquid_fits
+> make
+At this point the utility is compiled locally to your build directory.
+These programs will give a short usage message if run without arguments.
+See the documentation for more details.
+
+To perform a system installation at this point, simply do the following.
+> sudo make install
+The default install path is to /usr/local.
+
+To build rpms, debs, and tgz files, simply do the following in your
+build directory:
+> make package
+> make package_source
+The resulting output files will be in the packages/ subdir of your
+build directory.
+
+As an alternate to cmake, there is a generic Makefile included which
+might work for you.
