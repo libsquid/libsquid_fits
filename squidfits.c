@@ -35,10 +35,10 @@
 #include <libsquid.h>
 #include <libsquid_wcs.h>
 
-#define SQUIDFITS_VERSION 0.5.0
+#define SQUIDFITS_VERSION "0.6.0"
 #define SQUIDFITS_MAJOR 0
-#define SQUIDFITS_MINOR 5
-#define SQUIDFITS_PATCH 0
+#define SQUIDFITS_MINOR 6
+#define SQUIDFITS_PATCH 0 
 #define SQUIDFITS_RELEASE ""
 
 int main(int argc, char *argv[]) {
@@ -52,6 +52,8 @@ int main(int argc, char *argv[]) {
   int do_compress=0; // compress output image
   int itype; // interpolation type, 0=NEAREST, 1=BILINEAR (default), 2=CSPLINE, 3=CCONVOL
   int projection; // projection type, 0=TSC, 1=CSC, 2=QSC, 3=HSC
+  int pixtype=0; // pixel type, 1=INT16, 2=UINT16, 3=INT32, 4=UINT32, 5=FLOAT, 6=DOUBLE
+  int pixouttype; // cfitsio image type write code
   int flipx; // flip x axis
   long i; // loop counter
   squid_type hx,hy,tside;
@@ -66,7 +68,13 @@ int main(int argc, char *argv[]) {
   long opix; // output pix index, x+y*nrows;
   double interpval; // interpolated pixel value
   int interpout; // interpolation return value
-  double *img, *outimg; // fits image and output image
+  double *img; // fits image
+  int16_t *outimg_int16; // output image, short
+  uint16_t *outimg_uint16; // output image, unsigned short
+  int32_t *outimg_int32; // output image, int
+  uint32_t *outimg_uint32; // output image, unsigned int
+  float *outimg_float; // output image float
+  double *outimg_double; // output image double
   long outpix; // number of pixels in output image
   double ra,dec; // image coords in deg
   double ix,iy; // input image coords
@@ -88,6 +96,8 @@ int main(int argc, char *argv[]) {
   char dateobs[100];
   //struct wcserr fixinfo[NWCSFIX];
   double tside0, fluxratio; // double version of tside and flux ratio param
+  int rval; // cfitsio return val
+  long bzval; // bzero value for header
 
   // Mask variables
   int            use_mask;
@@ -118,7 +128,7 @@ int main(int argc, char *argv[]) {
   itype=BILINEAR; // default of BILINEAR interpolation
   flipx=0; // don't flip x axis by default
   projection=HSC; // default HSC projection
-  while ((optc = getopt(argc, argv, "cfi:m:p:r:t:")) != -1)
+  while ((optc = getopt(argc, argv, "cfi:m:p:r:t:b:")) != -1)
     switch (optc) {
     case 'c':
       do_compress=1;
@@ -164,6 +174,34 @@ int main(int argc, char *argv[]) {
 	projection=HSC;
       }
       break;
+    case 'b':
+      // image pixel type, 0=INT16, 1=UINT16, 2=INT32, 3=UINT32, 4=FLOAT, 5=DOUBLE
+      // This is being done because currently cfisio (v3.36) isn't doing compression
+      // when doing implicit type conversions.
+      pixtype=atoi(optarg);
+      if (pixtype == 1) {
+         printf("Pixel type is INT16.\n");
+         pixouttype=SHORT_IMG;
+      } else if (pixtype == 2) {
+         printf("Pixel type is UINT16.\n");
+         pixouttype=USHORT_IMG;
+      } else if (pixtype == 3) {
+         printf("Pixel type is INT32.\n");
+	 pixouttype=LONG_IMG;
+      } else if (pixtype == 4) {
+         printf("Pixel type is UINT32.\n");
+	 pixouttype=ULONG_IMG;
+      } else if (pixtype == 5) {
+         printf("Pixel type is FLOAT.\n");
+	 pixouttype=FLOAT_IMG;
+      } else if (pixtype == 6) {
+         printf("Pixel type is DOUBLE.\n");
+	 pixouttype=DOUBLE_IMG;
+      } else {
+         printf("Pixel type is DOUBLE.\n");
+         pixtype=6;
+	 pixouttype=DOUBLE_IMG;
+      }
     case 'r':
       hres1=atoi(optarg);
       printf("Setting tile resolution to %d\n",hres1);
@@ -183,10 +221,17 @@ int main(int argc, char *argv[]) {
       opterror=1;
       break;
     }
+  if (pixtype == 0) {
+    printf("Pixel type is DOUBLE.\n");
+    pixtype=6;
+    pixouttype=DOUBLE_IMG;
+  }  
   if ((opterror)||((optind+1) > argc)) {
     printf("\n");
+    printf("squidfits version %s%s\n",SQUIDFITS_VERSION,SQUIDFITS_RELEASE);
+    printf("\n");
     printf("Example usage...\n");
-    printf("%s [-c] [-f] [-i ival] [-m fname_mask] [-r rval] [-t tval] infile.fit\n",argv[0]);
+    printf("%s [args] infile.fit\n",argv[0]);
     printf("\n");
     printf("\t-c\t\tcompress fits output images.\n");
     printf("\t-f\t\tflip x axis in output images.\n");
@@ -201,6 +246,13 @@ int main(int argc, char *argv[]) {
     printf("\t\t\t1 = CSC\n");
     printf("\t\t\t2 = QSC\n");
     printf("\t\t\t3 = HSC (default)\n");
+    printf("\t-b\t\toutput image data type\n");
+    printf("\t\t\t1 = int16\n");
+    printf("\t\t\t2 = uint16\n");
+    printf("\t\t\t3 = int32\n");
+    printf("\t\t\t4 = uint32\n");
+    printf("\t\t\t5 = float\n");
+    printf("\t\t\t6 = double (default)\n");
     printf("\t-r rval\t\ttile resolution parameter, default 3.\n");
     printf("\t-t tval\t\t# pix on side of tile, calculated if not set.\n");
     printf("\n");
@@ -362,7 +414,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"unknown projection in %s\n",argv[0]);
     exit(-1);
   }
-  nhid = ceil(log10(pow(2,2*hres1+4))); // number of possible digits in hpx id
+  nhid = ceil(log10(pow(2,2*hres1+4))); // number of possible digits in squid
 
   //-----------------------------------------------------------------------
   // Loop over squids and create a thumbnail image for each one
@@ -378,7 +430,7 @@ int main(int argc, char *argv[]) {
   for (hidix=0; hidix<hidcount; hidix++) {
 
     // find thumbnail squid
-    hpix=hidarr[hidix];
+    hpix=hidarr[hidix]; // squid index
     printf("squid=%ld\n",(long)hpix);
     squid2sph(projection,hpix,&rac,&decc);
     printf("squid ra=%f dec=%f\n",rac/DD2R,decc/DD2R);
@@ -389,10 +441,42 @@ int main(int argc, char *argv[]) {
     sphdist(rac,decc,prac*DD2R,pdecc*DD2R,&parentr);
 
     // create temporary image
-    outimg=calloc((size_t)outpix,sizeof(double)); // don't forget to free this!
-    if (outimg == NULL) {
-      fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
-      exit(-1);
+    if (pixtype == 1) {
+      outimg_int16=calloc((size_t)outpix,sizeof(int16_t)); // don't forget to free this!
+      if (outimg_int16 == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
+    } else if (pixtype == 2) {
+      outimg_uint16=calloc((size_t)outpix,sizeof(uint16_t)); // don't forget to free this!
+      if (outimg_uint16 == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
+    } else if (pixtype == 3) {
+      outimg_int32=calloc((size_t)outpix,sizeof(int32_t)); // don't forget to free this!
+      if (outimg_int32 == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
+    } else if (pixtype == 4) {
+      outimg_uint32=calloc((size_t)outpix,sizeof(uint32_t)); // don't forget to free this!
+      if (outimg_uint32 == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
+    } else if (pixtype == 5) {
+      outimg_float=calloc((size_t)outpix,sizeof(float)); // don't forget to free this!
+      if (outimg_float == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
+    } else if (pixtype == 6) {
+      outimg_double=calloc((size_t)outpix,sizeof(double)); // don't forget to free this!
+      if (outimg_double == NULL) {
+        fprintf(stderr,"calloc failed in %s, %s\n",argv[0],strerror(errno));
+        exit(-1);
+      }
     }
     // get wcs struct for squid tile
     if (tile_getwcs(projection,hpix,tside,&hpxwcs) == -1) {
@@ -459,7 +543,19 @@ int main(int argc, char *argv[]) {
         if (interpout < 0) {
           omiss++;
         } else {
-          outimg[opix]=interpval*fluxratio;
+	  if (pixtype == 1) {
+            outimg_int16[opix]=interpval*fluxratio;
+          } else if (pixtype == 2) {
+            outimg_uint16[opix]=interpval*fluxratio;
+          } else if (pixtype == 3) {
+            outimg_int32[opix]=interpval*fluxratio;
+          } else if (pixtype == 4) {
+            outimg_uint32[opix]=interpval*fluxratio;
+          } else if (pixtype == 5) {
+            outimg_float[opix]=interpval*fluxratio;
+          } else {
+            outimg_double[opix]=interpval*fluxratio;
+	  }
         }
       }
     }
@@ -479,14 +575,13 @@ int main(int argc, char *argv[]) {
         // Do non-lossy here because of problems with current cfitsio where it
         // adds a GZIPPED section for all-zero regions.
         // This currently screws up pyfits and ds9.
+        // This also could potentially go away with later versions of cfitsio
         //snprintf(compstr,FNAME_MAX,"[compress H %d,%d]",tside,tside); // h compression non-lossy
         snprintf(compstr,FNAME_MAX,"[compress R %d,%d]",tside,tside); // rice compression
       }
       */
-      //snprintf(compstr,FNAME_MAX,"[compress R %d,%d]",tside,tside); // rice compression
-      snprintf(compstr,FNAME_MAX,"[compress R]"); // rice compression
+      snprintf(compstr,FNAME_MAX,"[compress R %d,%d]",tside,tside); // rice compression
     } else {
-      //snprintf(compstr,FNAME_MAX,""); // no compression
       compstr[0]='\0';
     }
     snprintf(hfmt2,FNAME_MAX,"%s%dd.fit",hfmt,nhid);
@@ -500,7 +595,7 @@ int main(int argc, char *argv[]) {
     }
     onaxes[0]=tside;
     onaxes[1]=tside;
-    if (fits_create_img(ofptr, FLOAT_IMG, 2, onaxes, &status)) {
+    if (fits_create_img(ofptr, pixouttype, 2, onaxes, &status)) {
       fits_report_error(stderr, status);
       exit(-1);
     }
@@ -521,15 +616,15 @@ int main(int argc, char *argv[]) {
       return(-1);
     }
     // Update parent x and y coords
-    if (fits_update_key(ofptr, TDOUBLE, "PARENTX", &parentx,"Parent X Coord for HPX Center", &status)) {
+    if (fits_update_key(ofptr, TDOUBLE, "PARENTX", &parentx,"Parent X Coord for SQUID Center", &status)) {
       fits_report_error(stderr, status);
       return(-1);
     }
-    if (fits_update_key(ofptr, TDOUBLE, "PARENTY", &parenty,"Parent Y Coord for HPX Center", &status)) {
+    if (fits_update_key(ofptr, TDOUBLE, "PARENTY", &parenty,"Parent Y Coord for SQUID Center", &status)) {
       fits_report_error(stderr, status);
       return(-1);
     }
-    if (fits_update_key(ofptr, TDOUBLE, "PARENTR", &parentr,"Sphdist Parent Center to HPX Center", &status)) {
+    if (fits_update_key(ofptr, TDOUBLE, "PARENTR", &parentr,"Sphdist Parent Center to SQUID Center", &status)) {
       fits_report_error(stderr, status);
       return(-1);
     }
@@ -539,7 +634,7 @@ int main(int argc, char *argv[]) {
       return(-1);
     }
     // Update compstring header
-    if (fits_update_key(ofptr, TSTRING, "COMPSTR", compstr,"", &status)) {
+    if (fits_update_key(ofptr, TSTRING, "COMPSTR", compstr,"compression output", &status)) {
       fits_report_error(stderr, status);
       return(-1);
     }
@@ -548,9 +643,76 @@ int main(int argc, char *argv[]) {
       fits_report_error(stderr, status);
       return(-1);
     }
+    // Update SQDVER keyword
+    if (fits_update_key(ofptr, TSTRING, "SQDVER", SQUIDFITS_VERSION,
+                        "SQUIDFITS version string", &status)) {
+      fits_report_error(stderr, status);
+      return(-1);
+    }
+    // Update LSQDVER keyword
+    if (fits_update_key(ofptr, TSTRING, "LSQDVER", LIBSQUID_VERSION,
+                        "LibSQUID version string", &status)) {
+      fits_report_error(stderr, status);
+      return(-1);
+    }
+    // Update LSQDWVER keyword
+    if (fits_update_key(ofptr, TSTRING, "LSQDWVER", LIBSQUIDWCS_VERSION,
+                        "LibSQUID_WCS version string", &status)) {
+      fits_report_error(stderr, status);
+      return(-1);
+    }
 
     // write output image
-    if (fits_write_img(ofptr, TDOUBLE, 1, outpix, outimg, &status)) {
+    if (pixtype == 1) { // write short image
+      bzval=0;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval, "default", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TSHORT, 1, outpix, outimg_int16, &status);
+      free(outimg_int16);
+    } else if (pixtype == 2) { // write unsigned short image
+      bzval=32768;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval, "offset for unsigned short", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TUSHORT, 1, outpix, outimg_uint16, &status);
+      free(outimg_uint16);
+    } else if (pixtype == 3) { // write int image
+      bzval=0;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval,"default", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TLONG, 1, outpix, outimg_int32, &status);
+      free(outimg_int32);
+    } else if (pixtype == 4) { // write unsigned int image
+      bzval=2147483648;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval, "offset for unsigned int", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TUINT, 1, outpix, outimg_uint32, &status);
+      free(outimg_uint32);
+    } else if (pixtype == 5) { // write float image
+      bzval=0;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval,"default", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TFLOAT, 1, outpix, outimg_float, &status);
+      free(outimg_float);
+    } else { // write double image
+      bzval=0;
+      if (fits_update_key(ofptr, TLONG, "BZERO", &bzval,"default", &status)) {
+        fits_report_error(stderr, status);
+        return(-1);
+      }
+      rval=fits_write_img(ofptr, TDOUBLE, 1, outpix, outimg_double, &status);
+      free(outimg_double);
+    }
+    if (rval) {
       fits_report_error(stderr, status);
       if (status != 412) exit(-1);
       status=0;
@@ -562,11 +724,10 @@ int main(int argc, char *argv[]) {
     }
 
     // free memory
-    free(outimg);
     //wcsfree(hpxwcs);
     printf("\n");
 
-  } // ***** end of healpix id for loop *********
+  } // ***** end of squidfits id for loop *********
   
   // free stuff from original image
   if (fits_close_file(fptr, &status)) {
