@@ -389,7 +389,7 @@ int main(int argc, char *argv[]) {
   pra0=wcor[0]; // parent corner ra
   pdec0=wcor[1]; // parent corner dec
   sphdist(prac*DD2R,pdecc*DD2R,pra0*DD2R,pdec0*DD2R,&sdist);
-  cdelt=sqrt(2.0)*sdist/(sqrt(xc*xc+yc*yc)*DD2R);
+  cdelt=sdist/(sqrt(xc*xc+yc*yc)*DD2R);
   printf("cdelt=%.5f\n",cdelt);
 
   // Try getting squid ids
