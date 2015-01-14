@@ -35,10 +35,10 @@
 #include <libsquid.h>
 #include <libsquid_wcs.h>
 
-#define SQUIDFITS_VERSION "0.6.0"
+#define SQUIDFITS_VERSION "0.6.1"
 #define SQUIDFITS_MAJOR 0
 #define SQUIDFITS_MINOR 6
-#define SQUIDFITS_PATCH 0 
+#define SQUIDFITS_PATCH 1 
 #define SQUIDFITS_RELEASE ""
 
 int main(int argc, char *argv[]) {
