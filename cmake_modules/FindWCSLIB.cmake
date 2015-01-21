@@ -4,6 +4,9 @@
 #  WCSLIB_FOUND - system has WCSLIB
 #  WCSLIB_INCLUDE_DIR - the WCSLIB include directory
 #  WCSLIB_LIBRARIES - Link these to use WCSLIB
+#  WCSLIB_VERSION_STRING - Human readable version number
+#  WCSLIB_VERSION_MAJOR - major version number
+#  WCSLIB_VERSION_MINOR - minor version number
 
 # Copyright (c) 2006, Jasem Mutlaq <mutlaqja@ikarustech.com>
 # Based on FindLibfacile by Carsten Niehaus, <cniehaus@gmx.de>
@@ -49,6 +52,12 @@ else (WCSLIB_INCLUDE_DIR AND WCSLIB_LIBRARIES)
 
 
   if (WCSLIB_FOUND)
+    # Find version from wcs.h header file
+    FILE(READ "${WCSLIB_INCLUDE_DIR}/wcs.h" WCSLIB_H)
+    STRING(REGEX REPLACE ".*wcs.h,v[^0-9]*([0-9]+)\\.([0-9]+).*" "\\1.\\2" WCSLIB_VERSION_STRING "${WCSLIB_H}")
+    STRING(REGEX REPLACE "^([0-9]+)[.]([0-9]+)" "\\1" WCSLIB_VERSION_MAJOR ${WCSLIB_VERSION_STRING})
+    STRING(REGEX REPLACE "^([0-9]+)[.]([0-9]+)" "\\2" WCSLIB_VERSION_MINOR ${WCSLIB_VERSION_STRING})
+    message(STATUS "found version string ${WCSLIB_VERSION_STRING}")
     if (NOT WCSLIB_FIND_QUIETLY)
       message(STATUS "Found WCSLIB: ${WCSLIB_LIBRARIES}, ${WCSLIB_INCLUDE_DIR}")
     endif (NOT WCSLIB_FIND_QUIETLY)
