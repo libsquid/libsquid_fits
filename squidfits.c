@@ -35,10 +35,10 @@
 #include <libsquid.h>
 #include <libsquid_wcs.h>
 
-#define SQUIDFITS_VERSION "0.6.2"
+#define SQUIDFITS_VERSION "0.6.3"
 #define SQUIDFITS_MAJOR 0
 #define SQUIDFITS_MINOR 6
-#define SQUIDFITS_PATCH 2 
+#define SQUIDFITS_PATCH 3 
 #define SQUIDFITS_RELEASE ""
 
 int main(int argc, char *argv[]) {
@@ -46,6 +46,8 @@ int main(int argc, char *argv[]) {
   char infile[FNAME_MAX]; // input file name
   char *bname,*bname0,*bnamehead; // input file basename
   char bnamehead2[FNAME_MAX], outname[FNAME_MAX], outnamecomp[FNAME_MAX]; // output file name
+  char dirname_output[DIRNAME_MAX]; // output directory name
+  char outname_fullpath[DIRNAME_MAX]; // full path to output file
   extern char *optarg;
   extern int optind;
   int optc,opterror; // for getopt call
@@ -110,6 +112,10 @@ int main(int argc, char *argv[]) {
   unsigned char  pixel_mask;
   long           coords_mask[2];
 
+  // Init strings
+  dirname_output[0]   = 0;
+  outname_fullpath[0] = 0;
+
   // Init mask
   use_mask      = 0;
   fname_mask[0] = 0;
@@ -128,7 +134,7 @@ int main(int argc, char *argv[]) {
   itype=BILINEAR; // default of BILINEAR interpolation
   flipx=0; // don't flip x axis by default
   projection=HSC; // default HSC projection
-  while ((optc = getopt(argc, argv, "cfi:m:p:r:t:b:")) != -1)
+  while ((optc = getopt(argc, argv, "cfi:m:o:p:r:t:b:")) != -1)
     switch (optc) {
     case 'c':
       do_compress=1;
@@ -157,6 +163,9 @@ int main(int argc, char *argv[]) {
       // use pixel mask
       use_mask = 1;
       strncpy(fname_mask, optarg, FNAME_MAX);
+      break;
+    case 'o':
+      strncpy(dirname_output, optarg, DIRNAME_MAX);
       break;
     case 'p':
       // projection type, 0=TSC, 1=CSC, 2=QSC, 3=HSC (default)
@@ -233,6 +242,7 @@ int main(int argc, char *argv[]) {
     printf("Example usage...\n");
     printf("%s [args] infile.fit\n",argv[0]);
     printf("\n");
+    printf("\t-o\t\toutput directory path.\n");
     printf("\t-c\t\tcompress fits output images.\n");
     printf("\t-f\t\tflip x axis in output images.\n");
     printf("\t-i ival\t\tinterpolation type:\n");
@@ -587,9 +597,15 @@ int main(int argc, char *argv[]) {
     snprintf(hfmt2,FNAME_MAX,"%s%dd.fit",hfmt,nhid);
     snprintf(outname,FNAME_MAX,hfmt2,bnamehead2,hpix);
     snprintf(outnamecomp,FNAME_MAX,"%s%s",outname,compstr);
-    printf("outname=%s\n",outnamecomp);
-    unlink(outname); // remove file if it already exists
-    if (fits_create_file(&ofptr, outnamecomp, &status)) {
+    outname_fullpath[0] = 0;
+    if (0 != strlen(dirname_output)) {
+      strncat(outname_fullpath,dirname_output,DIRNAME_MAX);
+      strncat(outname_fullpath,"/",DIRNAME_MAX);
+    }
+    strncat(outname_fullpath,outnamecomp,DIRNAME_MAX);
+    printf("outname=%s\n",outname_fullpath);
+    unlink(outname_fullpath); // remove file if it already exists
+    if (fits_create_file(&ofptr, outname_fullpath, &status)) {
       fits_report_error(stderr, status);
       exit(-1);
     }
