@@ -35,10 +35,10 @@
 #include <libsquid.h>
 #include <libsquid_wcs.h>
 
-#define SQUIDFITS_VERSION "0.6.3"
+#define SQUIDFITS_VERSION "0.7.0"
 #define SQUIDFITS_MAJOR 0
-#define SQUIDFITS_MINOR 6
-#define SQUIDFITS_PATCH 3 
+#define SQUIDFITS_MINOR 7
+#define SQUIDFITS_PATCH 0 
 #define SQUIDFITS_RELEASE ""
 
 int main(int argc, char *argv[]) {
@@ -56,7 +56,6 @@ int main(int argc, char *argv[]) {
   int projection; // projection type, 0=TSC, 1=CSC, 2=QSC, 3=HSC
   int pixtype=0; // pixel type, 1=INT16, 2=UINT16, 3=INT32, 4=UINT32, 5=FLOAT, 6=DOUBLE
   int pixouttype; // cfitsio image type write code
-  int flipx; // flip x axis
   long i; // loop counter
   squid_type hx,hy,tside;
   double hxd,hyd;
@@ -100,6 +99,8 @@ int main(int argc, char *argv[]) {
   double tside0, fluxratio; // double version of tside and flux ratio param
   int rval; // cfitsio return val
   long bzval; // bzero value for header
+  struct sip_param sparam; // SIP wcs distortion param struct
+  double xsip, ysip; // SIP wcs distortion output coords
 
   // Mask variables
   int            use_mask;
@@ -132,104 +133,101 @@ int main(int argc, char *argv[]) {
   hres1=-1;
   tside=0;
   itype=BILINEAR; // default of BILINEAR interpolation
-  flipx=0; // don't flip x axis by default
   projection=HSC; // default HSC projection
-  while ((optc = getopt(argc, argv, "cfi:m:o:p:r:t:b:")) != -1)
+  while ((optc = getopt(argc, argv, "ci:m:o:p:r:t:b:")) != -1) {
     switch (optc) {
-    case 'c':
-      do_compress=1;
-      printf("Compressing fits output.\n");
-      break;
-    case 'f':
-      flipx=1;
-      break;
-    case 'i':
-      // interpolation type, 0=NEAREST, 1=BILINEAR (default), 2=CSPLINE, 3=CCONVOL
-      itype=atoi(optarg);
-      if (itype == NEAREST) {
-        printf("Interpolation type set to NEAREST.\n");
-      } else if (itype == BILINEAR) {
-        printf("Interpolation type set to BILINEAR.\n");
-      } else if (itype == CSPLINE) {
-        printf("Interpolation type set to CUBIC SPLINE.\n");
-      } else if (itype == CCONVOL) {
-        printf("Interpolation type set to CUBIC CONVOLUTION.\n");
-      } else {
-        printf("Interpolation type unknown, setting to BILINEAR.\n");
-        itype=BILINEAR;
-      }
-      break;
-    case 'm':
-      // use pixel mask
-      use_mask = 1;
-      strncpy(fname_mask, optarg, FNAME_MAX);
-      break;
-    case 'o':
-      strncpy(dirname_output, optarg, DIRNAME_MAX);
-      break;
-    case 'p':
-      // projection type, 0=TSC, 1=CSC, 2=QSC, 3=HSC (default)
-      projection=atoi(optarg);
-      if (projection == TSC) {
-	printf("Projection is TSC.\n");
-      } else if (projection == CSC) {
-	printf("Projection is CSC.\n");
-      } else if (projection == QSC) {
-	printf("Projection is QSC.\n");
-      } else if (projection == HSC) {
-	printf("Projection is HSC.\n");
-      } else {
-	printf("Projection type unknown, setting to HSC.\n");
-	projection=HSC;
-      }
-      break;
-    case 'b':
-      // image pixel type, 0=INT16, 1=UINT16, 2=INT32, 3=UINT32, 4=FLOAT, 5=DOUBLE
-      // This is being done because currently cfisio (v3.36) isn't doing compression
-      // when doing implicit type conversions.
-      pixtype=atoi(optarg);
-      if (pixtype == 1) {
-         printf("Pixel type is INT16.\n");
-         pixouttype=SHORT_IMG;
-      } else if (pixtype == 2) {
-         printf("Pixel type is UINT16.\n");
-         pixouttype=USHORT_IMG;
-      } else if (pixtype == 3) {
-         printf("Pixel type is INT32.\n");
-	 pixouttype=LONG_IMG;
-      } else if (pixtype == 4) {
-         printf("Pixel type is UINT32.\n");
-	 pixouttype=ULONG_IMG;
-      } else if (pixtype == 5) {
-         printf("Pixel type is FLOAT.\n");
-	 pixouttype=FLOAT_IMG;
-      } else if (pixtype == 6) {
-         printf("Pixel type is DOUBLE.\n");
-	 pixouttype=DOUBLE_IMG;
-      } else {
-         printf("Pixel type is DOUBLE.\n");
-         pixtype=6;
-	 pixouttype=DOUBLE_IMG;
-      }
-    case 'r':
-      hres1=atoi(optarg);
-      printf("Setting tile resolution to %d\n",hres1);
-      break;
-    case 't':
-      tside=(squid_type)atol(optarg);
-      printf("Setting tile nside to %ld\n",(long)tside);
-      break;
-    case '?':
-      if ((optopt == 'i')||
-          (optopt == 'm')||
-          (optopt == 'r')||
-          (optopt == 't')) {
-        printf("Option -%c requires an argument.\n", optopt);
-      }
-      printf("Bad option '-%c' detected.\n", optopt); 
-      opterror=1;
-      break;
+      case 'c':
+        do_compress=1;
+        printf("Compressing fits output.\n");
+        break;
+      case 'i':
+        // interpolation type, 0=NEAREST, 1=BILINEAR (default), 2=CSPLINE, 3=CCONVOL
+        itype=atoi(optarg);
+        if (itype == NEAREST) {
+          printf("Interpolation type set to NEAREST.\n");
+        } else if (itype == BILINEAR) {
+          printf("Interpolation type set to BILINEAR.\n");
+        } else if (itype == CSPLINE) {
+          printf("Interpolation type set to CUBIC SPLINE.\n");
+        } else if (itype == CCONVOL) {
+          printf("Interpolation type set to CUBIC CONVOLUTION.\n");
+        } else {
+          printf("Interpolation type unknown, setting to BILINEAR.\n");
+          itype=BILINEAR;
+        }
+        break;
+      case 'm':
+        // use pixel mask
+        use_mask = 1;
+        strncpy(fname_mask, optarg, FNAME_MAX);
+        break;
+      case 'o':
+        strncpy(dirname_output, optarg, DIRNAME_MAX);
+        break;
+      case 'p':
+        // projection type, 0=TSC, 1=CSC, 2=QSC, 3=HSC (default)
+        projection=atoi(optarg);
+        if (projection == TSC) {
+          printf("Projection is TSC.\n");
+        } else if (projection == CSC) {
+          printf("Projection is CSC.\n");
+        } else if (projection == QSC) {
+          printf("Projection is QSC.\n");
+        } else if (projection == HSC) {
+          printf("Projection is HSC.\n");
+        } else {
+          printf("Projection type unknown, setting to HSC.\n");
+          projection=HSC;
+        }
+        break;
+      case 'b':
+        // image pixel type, 0=INT16, 1=UINT16, 2=INT32, 3=UINT32, 4=FLOAT, 5=DOUBLE
+        // This is being done because currently cfisio (v3.36) isn't doing compression
+        // when doing implicit type conversions.
+        pixtype=atoi(optarg);
+        if (pixtype == 1) {
+           printf("Pixel type is INT16.\n");
+           pixouttype=SHORT_IMG;
+        } else if (pixtype == 2) {
+           printf("Pixel type is UINT16.\n");
+           pixouttype=USHORT_IMG;
+        } else if (pixtype == 3) {
+           printf("Pixel type is INT32.\n");
+           pixouttype=LONG_IMG;
+        } else if (pixtype == 4) {
+           printf("Pixel type is UINT32.\n");
+           pixouttype=ULONG_IMG;
+        } else if (pixtype == 5) {
+           printf("Pixel type is FLOAT.\n");
+           pixouttype=FLOAT_IMG;
+        } else if (pixtype == 6) {
+           printf("Pixel type is DOUBLE.\n");
+           pixouttype=DOUBLE_IMG;
+        } else {
+           printf("Pixel type is DOUBLE.\n");
+           pixtype=6;
+           pixouttype=DOUBLE_IMG;
+        }
+      case 'r':
+        hres1=atoi(optarg);
+        printf("Setting tile resolution to %d\n",hres1);
+        break;
+      case 't':
+        tside=(squid_type)atol(optarg);
+        printf("Setting tile nside to %ld\n",(long)tside);
+        break;
+      case '?':
+        if ((optopt == 'i')||
+            (optopt == 'm')||
+            (optopt == 'r')||
+            (optopt == 't')) {
+          printf("Option -%c requires an argument.\n", optopt);
+        }
+        printf("Bad option '-%c' detected.\n", optopt);
+        opterror=1;
+        break;
     }
+  }
   if (pixtype == 0) {
     printf("Pixel type is DOUBLE.\n");
     pixtype=6;
@@ -242,15 +240,14 @@ int main(int argc, char *argv[]) {
     printf("Example usage...\n");
     printf("%s [args] infile.fit\n",argv[0]);
     printf("\n");
-    printf("\t-o\t\toutput directory path.\n");
     printf("\t-c\t\tcompress fits output images.\n");
-    printf("\t-f\t\tflip x axis in output images.\n");
     printf("\t-i ival\t\tinterpolation type:\n");
     printf("\t\t\t0 = Nearest neighbor\n");
     printf("\t\t\t1 = Bilinear (default)\n");
     printf("\t\t\t2 = Cubic spline\n");
     printf("\t\t\t3 = Cubic convolution\n");
     printf("\t-m fname_mask\tfilename of mask.\n");
+    printf("\t-o outdir\toutput directory.\n");
     printf("\t-p\t\tprojection type:\n");
     printf("\t\t\t0 = TSC\n");
     printf("\t\t\t1 = CSC\n");
@@ -346,7 +343,11 @@ int main(int argc, char *argv[]) {
       exit(-1);
     }
   }
-
+  // read SIP parameters if any
+  if (sip_read(fptr, &sparam) < 0) {
+    //read of sip failed, ignore sip correction
+    sparam.have_sip=0;
+  }
   // Remove SCAMP PV* headers because they screw up wcslib
   for (i=0; i<1000; i++) {
     if (fits_delete_key(fptr,"PV?_*", &status)) {
@@ -504,24 +505,33 @@ int main(int argc, char *argv[]) {
         hxd=(double)hx+0.5; // squid pix start at 0.5,0.5
         hyd=(double)hy+0.5; // squid pix start at 0.5,0.5
 
-	// Get ra,dec for squid tile x,y
+        // Get ra,dec for squid tile x,y
         if (tile_xy2sph(projection,hpix,hxd,hyd,tside,&ra,&dec) < 0) {
           //fprintf(stderr, "tile_xy2sph a failed\n");
           omiss++;
           continue;
         }
 
-	// Get image pixel coords from wcs info
+        // Get image pixel coords from wcs info
         if (wcs_rd2pix(wcs,ra/DD2R,dec/DD2R,&ix,&iy) < 0) {
           //fprintf(stderr, "wcs_rd2pix failed\n");
           omiss++;
           continue;
         }
-	// Verify the image pixel coords are actually within the image
-	if ((ix < 1)||(ix > naxes[0])||(iy < 1)||(iy > naxes[1])) {
-	  omiss++;
-	  continue;
-	}
+        // Apply SIP correction if needed
+        if (sparam.have_sip) {
+          if (sip_reverse(&sparam, ix, iy, &xsip, &ysip) < 0) {
+            fprintf(stderr,"sip_reverse failed in %s\n",argv[0]);
+            exit(-1);
+          }
+          ix=xsip;
+          iy=ysip;
+        }
+        // Verify the image pixel coords are actually within the image
+        if ((ix < 1)||(ix > naxes[0])||(iy < 1)||(iy > naxes[1])) {
+          omiss++;
+          continue;
+        }
 
         // Verify input pixel may contribute
         if (1 == use_mask) {
@@ -545,15 +555,11 @@ int main(int argc, char *argv[]) {
 
         // Find interpolated pixel value.
         // Note: wcs pix start at 1,1.
-        if (flipx) {
-          interpout=interp_img(itype,naxes[0]-ix+1.0,iy-1.0,img,naxes[0],naxes[1],&interpval);
-        } else {
-          interpout=interp_img(itype,ix-1.0,iy-1.0,img,naxes[0],naxes[1],&interpval);
-        }
+        interpout=interp_img(itype,ix-1.0,iy-1.0,img,naxes[0],naxes[1],&interpval);
         if (interpout < 0) {
           omiss++;
         } else {
-	  if (pixtype == 1) {
+          if (pixtype == 1) {
             outimg_int16[opix]=interpval*fluxratio;
           } else if (pixtype == 2) {
             outimg_uint16[opix]=interpval*fluxratio;
@@ -565,7 +571,7 @@ int main(int argc, char *argv[]) {
             outimg_float[opix]=interpval*fluxratio;
           } else {
             outimg_double[opix]=interpval*fluxratio;
-	  }
+          }
         }
       }
     }
@@ -740,7 +746,6 @@ int main(int argc, char *argv[]) {
     }
 
     // free memory
-    //wcsfree(hpxwcs);
     printf("\n");
 
   } // ***** end of squidfits id for loop *********
