@@ -128,9 +128,9 @@ if (NOT SQUIDFITS_RELEASE_STRING STREQUAL "")
    set(CPACK_RPM_PACKAGE_RELEASE "${SQUIDFITS_RELEASE_STRING}")
 endif()
 set(CPACK_RPM_PACKAGE_REQUIRES
-   "libsquid > 0.5, libsquid_wcs > 0.5, cfitsio >= 3.0, wcslib >= 4.19")
+   "libsquid >= 0.5.3, libsquid_wcs > 0.6, cfitsio >= 3.0, wcslib >= 4.19")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-   "libsquid (> 0.5), libsquid_wcs (> 0.5) cfitsio (>= 3.0), wcslib (>= 4.19)")
+   "libsquid (>= 0.5.3), libsquid_wcs (> 0.6) cfitsio (>= 3.0), wcslib (>= 4.19)")
 set(CPACK_GENERATOR "RPM" "DEB")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_SOURCE_IGNORE_FILES "~$;[.]bak$/;[.]swp$;[.]svn$")
