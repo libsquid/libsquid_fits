@@ -6,7 +6,13 @@ wcslib (>4.19).
 Currently the build system in use is cmake.  The best way to
 build the system is to make a build directory in the location
 of your choice, cd to it, and then run:
-> cmake [-DCMAKE_INSTALL_PREFIX:PATH=/install/path] /path/to/libsquid_fits
+> cmake [OPTIONS] /path/to/libsquid_fits
+#Options:
+#  -DCMAKE_INSTALL_PREFIX=/install/path
+#  -DLIBSQUID_INCLUDEDIR=/path/to/libsquid/include
+#  -DLIBSQUID_LIBDIR=/path/to/libsquid/lib
+#  -DLIBSQUIDWCS_INCLUDEDIR=/path/to/libsquid_wcs/include
+#  -DLIBSQUIDWCS_LIBDIR=/path/to/libsquid_wcs/lib
 > make
 At this point the utility is compiled locally to your build directory.
 These programs will give a short usage message if run without arguments.
